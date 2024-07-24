@@ -152,6 +152,7 @@ def setup_config_and_wandb(args):
     if args.extra_params is not None:
         config.add_hyperparams(args.extra_params)
 
+    wandb_run = None
     if args.wandb:
         import wandb
         if wandb.login():
@@ -168,7 +169,7 @@ def setup_config_and_wandb(args):
             else:
                 entity = project = None  # use values from wandb/settings
 
-            wandb.init(
+            wandb_run = wandb.init(
                 name=job_name, notes=run_notes, project=project, entity=entity,
                 config=base_config)
             # Note that wandb config can contain different and/or new keys that
@@ -198,7 +199,7 @@ def setup_config_and_wandb(args):
     logger.info("TRAINING RUN: %s", job_name)
     logger.info("ON HOST: %s", platform.node())
 
-    return config, job_name, data_dir
+    return config, job_name, data_dir, wandb_run
 
 
 def set_global_seed(config):
@@ -234,7 +235,7 @@ def launch_tensorboard(job_name, data_dir, port):
         return None
 
 
-def launch_training(config, data_dir):
+def launch_training(config, data_dir, wandb_run=None):
     from training import logging_setup
     from training import models
     from training.env_factory import build_environments
@@ -274,7 +275,7 @@ def launch_training(config, data_dir):
     print("")
 
     if config['run_type'] == "train":
-        algo.train(int(config['steps']))
+        algo.train(int(config['steps']), wandb_run)
         if 'benchmark' in envs:
             algo.run_episodes(envs['benchmark'], num_episodes=1000)
     elif config['run_type'] == "benchmark" and "benchmark" in envs:
@@ -322,12 +323,12 @@ def main():
 
     args = parse_args()
     build_c_extensions()
-    config, job_name, data_dir = setup_config_and_wandb(args)
+    config, job_name, data_dir, wandb_run = setup_config_and_wandb(args)
     set_global_seed(config)
     tb_proc = launch_tensorboard(job_name, data_dir, args.port)
 
     try:
-        launch_training(config, data_dir)
+        launch_training(config, data_dir, wandb_run)
     except KeyboardInterrupt:
         logger.critical("Keyboard Interrupt. Ending early.\n")
     except Exception:

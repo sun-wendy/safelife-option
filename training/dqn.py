@@ -174,7 +174,7 @@ class DQN(BaseAlgo):
                 data['loss'], data['q_model_mean'], data['q_model_max'])
             self.data_logger.log_scalars(data, self.num_steps, 'dqn')
 
-    def train(self, steps):
+    def train(self, steps, wandb_run=None):
         needs_report = True
         max_steps = self.num_steps + steps
 

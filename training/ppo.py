@@ -181,7 +181,7 @@ class PPO(BaseAlgo):
                 loss.backward()
                 self.optimizer.step()
 
-    def train(self, steps):
+    def train(self, steps, wandb_run=None):
         max_steps = self.num_steps + steps
 
         while self.num_steps < max_steps:
@@ -212,6 +212,12 @@ class PPO(BaseAlgo):
                     "values": values,
                     "advantages": advantages,
                 }, num_steps, 'ppo')
+
+                if wandb_run is not None:
+                    wandb_run.log({"loss": loss,
+                                   "entropy": entropy,
+                                   "values": values,
+                                   "advantages": advantages}, num_steps)
 
             if self.testing_envs and num_steps >= next_test:
                 self.run_episodes(self.testing_envs)
