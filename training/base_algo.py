@@ -275,7 +275,7 @@ class BaseAlgo(object):
         # return obs, actions, rewards, done, agent_ids
         raise NotImplementedError
 
-    def run_episodes(self, envs, num_episodes=None):
+    def run_episodes(self, envs, num_episodes=None, wandb_run=None):
         """
         Run each environment to completion.
 
@@ -315,4 +315,10 @@ class BaseAlgo(object):
             envs = new_envs
 
         if logger is not None:
-            logger.log_summary()
+            data = logger.log_summary()
+            # Hacky way to log to wandb during testing
+            print("RETUN DATA:")
+            print(data)
+            exit()
+            if wandb_run is not None:
+                wandb_run.log(data)

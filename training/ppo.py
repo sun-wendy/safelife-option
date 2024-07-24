@@ -220,6 +220,6 @@ class PPO(BaseAlgo):
                                    "advantages": advantages}, num_steps)
 
             if self.testing_envs and num_steps >= next_test:
-                self.run_episodes(self.testing_envs)
+                self.run_episodes(self.testing_envs, wandb_run=wandb_run)
 
         self.save_checkpoint()
