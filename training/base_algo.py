@@ -316,9 +316,5 @@ class BaseAlgo(object):
 
         if logger is not None:
             data = logger.log_summary()
-            # Hacky way to log to wandb during testing
-            print("RETUN DATA:")
-            print(data)
-            exit()
             if wandb_run is not None:
                 wandb_run.log(data)

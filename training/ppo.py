@@ -203,6 +203,7 @@ class PPO(BaseAlgo):
                 entropy = entropy.mean().item()
                 values = batch.values.mean().item()
                 advantages = batch.advantages.mean().item()
+                returns = batch.returns.mean().item()
                 logger.info(
                     "n=%i: loss=%0.3g, entropy=%0.3f, val=%0.3g, adv=%0.3g",
                     num_steps, loss, entropy, values, advantages)
@@ -211,10 +212,12 @@ class PPO(BaseAlgo):
                     "entropy": entropy,
                     "values": values,
                     "advantages": advantages,
+                    "return": returns,
                 }, num_steps, 'ppo')
 
                 if wandb_run is not None:
                     wandb_run.log({"loss": loss,
+                                   "return": returns,
                                    "entropy": entropy,
                                    "values": values,
                                    "advantages": advantages}, num_steps)
