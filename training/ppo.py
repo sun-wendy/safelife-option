@@ -216,11 +216,11 @@ class PPO(BaseAlgo):
                 }, num_steps, 'ppo')
 
                 if wandb_run is not None:
-                    wandb_run.log({"loss": loss,
-                                   "return": returns,
-                                   "entropy": entropy,
-                                   "values": values,
-                                   "advantages": advantages}, num_steps)
+                    wandb_run.log({"ppo/loss": loss,
+                                   "ppo/return": returns,
+                                   "ppo/entropy": entropy,
+                                   "ppo/values": values,
+                                   "ppo/advantages": advantages}, num_steps)
 
             if self.testing_envs and num_steps >= next_test:
                 self.run_episodes(self.testing_envs, wandb_run=wandb_run)
