@@ -65,7 +65,7 @@ class CurricularLevelIterator(SafeLifeLevelIterator):
     curriculum_distribution = "progress_estimate"  # or "uniform"
 
     def __init__(self, *levels, logger, curriculum_params={}, **kwargs):
-        super().__init__(*levels, repeat_levels=True, **kwargs)
+        super().__init__(*levels, **kwargs)
         self.logger = logger
         self.curriculum_stage = 0
         self.max_stage = len(levels) - 1
@@ -173,38 +173,39 @@ class SwitchingLevelIterator(SafeLifeLevelIterator):
         else:
             return self.file_data[0]
 
-
+# See discusion at https://github.com/PartnershipOnAI/safelife/issues/31 about
+# loading benchmarks
 task_types = {
     # Single-agent tasks:
     'append-still': {
         'iter_class': SafeLifeLevelIterator,
         'train_levels': ['random/append-still-easy'],
         'validation_levels': ['random/append-still'],
-        'benchmark_levels': 'benchmarks/v1.0/append-still.npz',
+        'benchmark_levels': ['random/append-still'],
     },
     'prune-still': {
         'iter_class': SafeLifeLevelIterator,
         'train_levels': ['random/prune-still'],
         'validation_levels': ['random/prune-still'],
-        'benchmark_levels': 'benchmarks/v1.0/prune-still.npz',
+        'benchmark_levels': ['random/prune-still'],
     },
     'append-spawn': {
         'iter_class': SwitchingLevelIterator,
         'train_levels': ['random/append-still-easy', 'random/append-spawn'],
         'validation_levels': ['random/append-spawn'],
-        'benchmark_levels': 'benchmarks/v1.0/append-spawn.npz',
+        'benchmark_levels': ['random/append-spawn'],
     },
     'prune-spawn': {
         'iter_class': SwitchingLevelIterator,
         'train_levels': ['random/prune-still', 'random/prune-spawn'],
         'validation_levels': ['random/prune-spawn'],
-        'benchmark_levels': 'benchmarks/v1.0/prune-spawn.npz',
+        'benchmark_levels': ['random/prune-spawn'],
     },
     'curriculum-append-spawn': {
         'iter_class': CurricularLevelIterator,
         'train_levels': ['random/append-still-easy', 'random/append-spawn'],
         'validation_levels': ['random/append-spawn'],
-        'benchmark_levels': 'benchmarks/v1.0/append-spawn.npz',
+        'benchmark_levels': ['random/append-spawn'],
     },
     'navigate': {
         'iter_class': SafeLifeLevelIterator,
@@ -212,7 +213,7 @@ task_types = {
         # use a fixed set of 10k levels instead.
         'train_levels': ['training/navigation'],
         'validation_levels': ['random/navigation'],
-        'benchmark_levels': 'benchmarks/v1.0/navigation.npz',
+        'benchmark_levels': ['random/navigation'],
     },
 
     # Multi-agent tasks:
@@ -298,7 +299,7 @@ def build_environments(config, data_dir=None):
     task_data = task_types[task]
 
     # common arguments for all environments
-    view_size = config.setdefault('env.view_size', 25)
+    view_size = config.setdefault('env.view_size', 26)
     common_env_args = {
         'single_agent': not task_data.get('multiagent'),
         'view_shape': (view_size, view_size),
@@ -367,7 +368,7 @@ def build_environments(config, data_dir=None):
 
     envs = {}
     envs['training'] = safelife_env_factory(
-        training_iter, num_envs=16, training=True, env_args=common_env_args,
+        training_iter, num_envs=config['n_training_envs'], training=True, env_args=common_env_args,
         data_logger=training_logger,
         se_baseline=se_baseline, se_penalty=schedule(**se_schedule),
         exit_difficulty=schedule(**exit_difficulty),
@@ -392,19 +393,19 @@ def build_environments(config, data_dir=None):
                 repeat_levels=True, distinct_levels=num_validation_levels))
 
     # Benchmark environments
-
-    # These are only run at the very end of training.
-    # The seed only matters for stochastic dynamics, because the benchmark
-    # levels themselves are fixed. The seed is spawned off of the main seed
-    # and will generally be different from run to run.
+    
+    # Following steps as in https://github.com/PartnershipOnAI/safelife/issues/31
+    # Use a fixed environment and use a fixed seed. I add one to the seed so that
+    # the benchmark and validation seeds are not the same (not sure if this matters)
 
     benchmark_levels = task_data.get('benchmark_levels')
     if benchmark_levels:
+        benchmark_seed = validation_seed + 1
         envs['benchmark'] = safelife_env_factory(
             num_envs=20, training=False, env_args=common_env_args,
             data_logger=setup_data_logger(data_dir, 'benchmark'),
             level_iterator=SafeLifeLevelIterator(
-                benchmark_levels, seed=benchmark_seed, num_workers=0,
+                *benchmark_levels, seed=benchmark_seed, num_workers=0,
                 repeat_levels=True))
 
     return envs

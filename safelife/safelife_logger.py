@@ -428,6 +428,7 @@ class SafeLifeLogger(BaseLogger):
             data[key.replace('_', '/')] = val
         if self.wandb:
             self.wandb.log(data)
+        return data
 
 
 class RemoteSafeLifeLogger(BaseLogger):
