@@ -174,7 +174,7 @@ class DQN(BaseAlgo):
                 data['loss'], data['q_model_mean'], data['q_model_max'])
             self.data_logger.log_scalars(data, self.num_steps, 'dqn')
 
-    def train(self, steps):
+    def train(self, steps, wandb_run=None):
         needs_report = True
         max_steps = self.num_steps + steps
 
@@ -209,6 +209,6 @@ class DQN(BaseAlgo):
 
             if self.testing_envs and num_steps >= next_test:
                 self.epsilon = self.epsilon_testing
-                self.run_episodes(self.testing_envs)
+                self.run_episodes(self.testing_envs, wandb_run=wandb_run)
 
         self.save_checkpoint()

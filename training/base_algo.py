@@ -164,12 +164,15 @@ class BaseAlgo(object):
         obs_list = []
         active = []
         agent_ids = []
+        info_list = []
         for env in envs:
             if hasattr(env, 'last_obs'):
                 obs = env.last_obs
                 done = env.last_done
+                info = env.last_info
             else:
                 obs = env.reset()
+                info = {'uncentered_obs': env.uncentered_obs}
                 if getattr(env, 'single_agent', True):
                     obs = np.asanyarray(obs)[np.newaxis]
                 env.last_done = done = np.tile(False, len(obs))
@@ -177,6 +180,7 @@ class BaseAlgo(object):
             for k in range(len(obs)):
                 agent_ids.append((id(env), env.num_resets, k))
             obs_list.append(obs)
+            info_list.append(info)
             active.append(~done)
 
         obs_list = np.concatenate(obs_list)
@@ -185,12 +189,15 @@ class BaseAlgo(object):
         # a tuple so that they can be used as dictionary keys.
         agent_id_arr = np.zeros(len(agent_ids), dtype=object)
         agent_id_arr[:] = agent_ids
+        info_arr = np.zeros(len(info_list), dtype=object)
+        info_arr[:] = info_list
 
-        return obs_list[active], agent_id_arr[active]
+        return obs_list[active], agent_id_arr[active], info_arr[active]
 
     def act_on_envs(self, envs, actions):
         """
-        Return observations, rewards, and done flags for each environment.
+        Return observations, rewards, done flags, and info dictionaries for each
+        environment.
 
         The number of actions should match the total number of active agents
         in each environment, which should also match the number of observations
@@ -203,6 +210,7 @@ class BaseAlgo(object):
         obs_list = []
         reward_list = []
         done_list = []
+        info_list = []
 
         k = 0
         for env in envs:
@@ -224,26 +232,33 @@ class BaseAlgo(object):
                 done = np.array([done])
             else:
                 obs, reward, done, info = env.step(env_actions)
+
             obs_list.append(obs[active])
             reward_list.append(reward[active])
             done_list.append(done[active])
+            info_list.extend(info if active else [])
 
             if np.all(done):
                 obs = env.reset()
+                # env.uncentered_obs is reset during env.reset()
+                info = {'uncentered_obs': env.uncentered_obs}
                 if getattr(env, 'single_agent', True):
                     obs = np.asanyarray(obs)[np.newaxis]
                 done = np.tile(False, len(obs))
                 env.num_resets += 1
+
             env.last_obs = obs
             env.last_done = done
+            env.last_info = info
 
         return (
             np.concatenate(obs_list),
             np.concatenate(reward_list),
             np.concatenate(done_list),
+            info_list
         )
 
-    @named_output('obs actions rewards done next_obs agent_ids')
+    @named_output('obs actions rewards done next_obs agent_ids,')
     def take_one_step(self, envs):
         """
         Take one step in each of the environments.
@@ -275,7 +290,7 @@ class BaseAlgo(object):
         # return obs, actions, rewards, done, agent_ids
         raise NotImplementedError
 
-    def run_episodes(self, envs, num_episodes=None):
+    def run_episodes(self, envs, num_episodes=None, wandb_run=None):
         """
         Run each environment to completion.
 
@@ -315,4 +330,6 @@ class BaseAlgo(object):
             envs = new_envs
 
         if logger is not None:
-            logger.log_summary()
+            data = logger.log_summary()
+            if wandb_run is not None:
+                wandb_run.log(data)
