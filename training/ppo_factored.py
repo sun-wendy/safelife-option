@@ -7,6 +7,7 @@ import torch.optim as optim
 
 from safelife.helper_utils import load_kwargs
 from safelife.random import get_rng
+from safelife.render_graphics import render_board
 
 from .base_algo import BaseAlgo
 from .global_config import HyperParam, update_hyperparams
@@ -17,9 +18,22 @@ logger = logging.getLogger(__name__)
 USE_CUDA = torch.cuda.is_available()
 
 
+def save_frames(frames, frame_dir):
+    from PIL import Image
+
+    width = frames.shape[2]
+    height = frames.shape[3]
+    for step in range(frames.shape[0]):
+        for env_idx in range(frames.shape[1]):
+            # Save the image
+            Image.fromarray(frames[step, env_idx]).save(f"{frame_dir}/step_{step}_"
+                                                        f"env_{env_idx}.png")
+
+
 @update_hyperparams
-class PPO(BaseAlgo):
+class PPOFactored(BaseAlgo):
     data_logger = None  # SafeLifeLogger instance
+    batch_frames = None # array of game boards for each step of a batch
 
     num_steps = 0
 
@@ -57,9 +71,18 @@ class PPO(BaseAlgo):
 
         self.load_checkpoint()
 
-    @named_output('obs actions rewards done next_obs agent_ids policies values')
-    def take_one_step(self, envs):
-        obs, agent_ids, _ = self.obs_for_envs(envs)
+    @named_output('obs info_list actions rewards done next_obs next_info_list '
+                  'agent_ids policies values')
+    def take_one_step(self, envs, store_frames=False):
+        obs, agent_ids, info_list = self.obs_for_envs(envs)
+
+        if store_frames:
+            assert self.batch_frames is not None
+            self.batch_frames.append(
+                [render_board(np.expand_dims(env.game.board, axis=0),
+                              env.game.goals,
+                              env.game.orientation)
+                 for env in self.training_envs])
 
         tensor_obs = self.tensor(obs, torch.float32)
         values, policies = self.model(tensor_obs)
@@ -67,12 +90,13 @@ class PPO(BaseAlgo):
         policies = policies.detach().cpu().numpy()
         actions = [get_rng().choice(len(policy), p=policy) for policy in policies]
 
-        next_obs, rewards, done, _ = self.act_on_envs(envs, actions)
+        next_obs, rewards, done, next_info_list = self.act_on_envs(envs, actions)
 
-        return obs, actions, rewards, done, next_obs, agent_ids, policies, values
+        return (obs, info_list, actions, rewards, done, next_obs, next_info_list,
+                agent_ids, policies, values)
 
-    @named_output('obs actions action_prob returns advantages values')
-    def gen_training_batch(self, steps_per_env):
+    @named_output('obs uncentered_obs actions action_prob returns advantages values')
+    def gen_training_batch(self, steps_per_env, return_frames=False):
         """
         Run each environment a number of steps and calculate advantages.
 
@@ -88,6 +112,7 @@ class PPO(BaseAlgo):
 
         trajectories = defaultdict(lambda: {
             'obs': [],
+            'uncentered_obs': [],
             'actions': [],
             'action_prob': [],
             'rewards': [],
@@ -95,14 +120,23 @@ class PPO(BaseAlgo):
             'final_value': 0.0,
         })
 
+        if return_frames:
+            self.batch_frames = []
+
         # Take a bunch of steps, and put them into trajectories associated with
         # each distinct agent
         for _ in range(steps_per_env):
-            step = self.take_one_step(self.training_envs)
+
+            step = self.take_one_step(self.training_envs, store_frames=return_frames)
+
+            # in base_algo, the env now has a "last_board" state
             for k, agent_id in enumerate(step.agent_ids):
                 t = trajectories[agent_id]
                 action = step.actions[k]
+                _obs = step.obs[k]
+                _uncentered_obs = step.info_list[k]['uncentered_obs']
                 t['obs'].append(step.obs[k])
+                t['uncentered_obs'].append(_uncentered_obs)
                 t['actions'].append(action)
                 t['action_prob'].append(step.policies[k, action])
                 t['rewards'].append(step.rewards[k])
@@ -137,10 +171,8 @@ class PPO(BaseAlgo):
             x = np.concatenate([d[label] for d in trajectories.values()])
             return torch.as_tensor(x, device=self.compute_device, dtype=dtype)
 
-        return (
-            t('obs'), t('actions', torch.int64), t('action_prob'),
-            t('returns'), t('advantages'), t('values')
-        )
+        return (t('obs'), t('uncentered_obs'), t('actions', torch.int64),
+                t('action_prob'), t('returns'), t('advantages'), t('values'))
 
     def calculate_loss(
             self, obs, actions, old_policy, old_values, returns, advantages):
@@ -188,7 +220,34 @@ class PPO(BaseAlgo):
             next_report = round_up(self.num_steps, self.report_interval)
             next_test = round_up(self.num_steps, self.test_interval)
 
-            batch = self.gen_training_batch(self.steps_per_env)
+            # return_frames=True creates a new self.frames variable
+            batch = self.gen_training_batch(self.steps_per_env, return_frames=True)
+
+            # Save the game frames
+            frame_dir = "out/test_frames"
+            self.batch_frames = np.array(self.batch_frames).squeeze(axis=2)
+            save_frames(self.batch_frames, frame_dir)
+
+            # Save the output channels
+            channel_dir = "out/test_channels"
+            obs_list = batch.obs.numpy()
+            for step in range(obs_list.shape[0]):
+                for channel in range(obs_list.shape[-1]):
+                    np.savetxt(f"{channel_dir}/obs_step_{step}_channel_"
+                               f"{channel}.txt", obs_list[step, :, :, channel],
+                               delimiter='\t', fmt='%s')
+
+            uncentered_obs_list = batch.uncentered_obs.numpy()
+            for step in range(uncentered_obs_list.shape[0]):
+                for channel in range(uncentered_obs_list.shape[-1]):
+                    frame = uncentered_obs_list[step, :, :, channel]
+                    np.savetxt(f"{channel_dir}/uncentered_obs_step_{step}_channel_"
+                               f"{channel}.txt", uncentered_obs_list[step, :, :,channel],
+                               delimiter='\t', fmt='%s')
+
+
+            exit()
+
             self.train_batch(batch)
 
             self.save_checkpoint_if_needed()

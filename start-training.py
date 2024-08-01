@@ -39,10 +39,13 @@ def parse_args(argv=sys.argv[1:]):
         "If 'train', train the model. If 'benchmark', run the model on testing "
         "environments. If 'inspect', load an ipython prompt for interactive "
         "debugging.")
-    parser.add_argument('--algo', choices=('ppo', 'dqn'), default='ppo')
+    parser.add_argument('--algo',
+                        choices=('ppo', 'dqn', 'ppo-factored'), default='ppo')
     parser.add_argument('-e', '--env-type', default='append-spawn')
     parser.add_argument('-s', '--steps', type=float, default=6e6,
         help='Length of training in steps (default: 6e6).')
+    parser.add_argument('--n_training_envs', type=int, default=1,
+                        help="Number of training environments to run in parallel")
     parser.add_argument('--seed', default=None, type=int)
     parser.add_argument('--deterministic', action="store_true",
         help="If set, uses deterministic cudnn routines. This may slow "
@@ -252,6 +255,9 @@ def launch_training(config, data_dir, wandb_run=None):
     if config['algo'] == 'ppo':
         from training.ppo import PPO as algo_cls
         algo_args['model'] = models.SafeLifePolicyNetwork(obs_shape)
+    elif config['algo'] == 'ppo-factored':
+            from training.ppo_factored import PPOFactored as algo_cls
+            algo_args['model'] = models.SafeLifePolicyNetwork(obs_shape)
     elif config['algo'] == 'dqn':
         from training.dqn import DQN as algo_cls
         algo_args['training_model'] = models.SafeLifeQNetwork(obs_shape)
