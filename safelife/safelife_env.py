@@ -128,6 +128,9 @@ class SafeLifeEnv(gym.Env):
         # Combine board and goals into one array
         board += (goals.astype(np.uint32) << 16)
 
+        # NEW: Keep track of uncentered board
+        self.uncentered_obs = np.stack([board for _ in agent_locs])
+
         # And center the array on the agent.
         board = np.stack([
             recenter_view(board, self.view_shape, x0, self.game.exit_locs)
@@ -141,8 +144,12 @@ class SafeLifeEnv(gym.Env):
             shift = np.array(list(self.output_channels), dtype=np.uint32)
             board = (board[...,None] & (1 << shift)) >> shift
             board = board.astype(np.uint8)
+            self.uncentered_obs = (self.uncentered_obs[..., None] & (1 << shift)) >> shift
+            self.uncentered_obs = self.uncentered_obs.astype(np.uint8)
         if self.single_agent:
             board = board[0]
+            self.uncentered_obs = self.uncentered_obs[0]
+
         return board
 
     def step(self, actions):
@@ -192,12 +199,15 @@ class SafeLifeEnv(gym.Env):
         if self.side_effects is not None:
             episode_info['side_effects'] = self.side_effects
 
-        return self.get_obs(), reward, done, {
+        obs = self.get_obs()
+
+        return obs, reward, done, {
             'board': self.game.board,
             'goals': self.game.goals,
             'agent_locs': self.game.agent_locs,
             'times_up': times_up,
             'episode': episode_info,
+            'uncentered_obs': self.uncentered_obs,
         }
 
     def reset(self):
