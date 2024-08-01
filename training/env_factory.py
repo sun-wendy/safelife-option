@@ -299,7 +299,7 @@ def build_environments(config, data_dir=None):
     task_data = task_types[task]
 
     # common arguments for all environments
-    view_size = config.setdefault('env.view_size', 25)
+    view_size = config.setdefault('env.view_size', 26)
     common_env_args = {
         'single_agent': not task_data.get('multiagent'),
         'view_shape': (view_size, view_size),
@@ -368,7 +368,7 @@ def build_environments(config, data_dir=None):
 
     envs = {}
     envs['training'] = safelife_env_factory(
-        training_iter, num_envs=16, training=True, env_args=common_env_args,
+        training_iter, num_envs=config['n_training_envs'], training=True, env_args=common_env_args,
         data_logger=training_logger,
         se_baseline=se_baseline, se_penalty=schedule(**se_schedule),
         exit_difficulty=schedule(**exit_difficulty),
